@@ -184,7 +184,7 @@ def check_status(people_count, station, status, time_started, previous_status, s
 def main():
     global frame1, frame2
 
-    sfvis = 1
+    sfvis = 1 # This value is unique for each SFVIS board
     camera_id1 = 0  # This value will never change
     camera_id2 = 4  # This value will never change, but check if it's correct
 
