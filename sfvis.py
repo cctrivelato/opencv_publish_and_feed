@@ -1,16 +1,16 @@
 import cv2
+import socket
 import jetson.inference
 import jetson.utils
 import mysql.connector
+from mysql.connector import Error
 import time
 from datetime import datetime, timedelta
 import threading
 from flask import Flask, Response
 
 frame_rate = 40
-
 app = Flask(__name__)
-
 frame1 = None
 frame2 = None
 
@@ -21,9 +21,12 @@ camera_id2 = 2  # This value will never change, but check if it's correct
 db_config = {
             'user': 'root',
             'password': '********',
-            'host': 'sfmysql02.sf.local',
+            'host': 'localhost',
             'database': 'test'
         }
+
+# Get machine's hostname
+hostname = socket.gethostname()
 
 # Initialize the camera using OpenCV
 def initialize_camera(camera_id):
@@ -32,7 +35,7 @@ def initialize_camera(camera_id):
         print(f"Error: Could not open the camera {camera_id}.")
         return None
     
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1080)  # Lower resolution to reduce load
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1080)  
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     cap.set(cv2.CAP_PROP_FPS, frame_rate)  # Lower frame rate to reduce load
     
@@ -82,9 +85,9 @@ def camera2_feed():
 # Method to get the workstation info
 def get_workstation(sfvis, camera_id):
     if camera_id == 0:
-        workstation = (sfvis*2 - 1)
+        workstation = (int(sfvis)*2 - 1)
     elif camera_id == 2:
-        workstation = (sfvis*2) 
+        workstation = (int(sfvis)*2) 
     return workstation
     
 
@@ -171,14 +174,25 @@ def delete_query(cursor, connection, station):
     cursor.execute(count_query)
     row_count = cursor.fetchone()[0]
 
-    if row_count >= 10:
-        delete_query = f"""
-            DELETE FROM sfvis_cam{str(station)} WHERE Timestamp = (SELECT Timestamp FROM (SELECT Timestamp FROM sfvis_cam{str(station)} ORDER BY Timestamp ASC LIMIT 1) AS subquery);>
-            """
+    try:
+        if row_count >= 10:
+            delete_query = f"""
+                DELETE FROM test.sfvis_cam{str(station)} ORDER BY Timestamp ASC LIMIT 1;
+                """
 
-        # Execute the DELETE query
-        cursor.execute(delete_query)
-        connection.commit()
+            cursor.execute(delete_query, multi=True)  #multi=True here
+            connection.commit()
+            print(f"Oldest record deleted from sfvis_cam{station}.")
+        else:
+            print(f"Row count in sfvis_cam{station} is below the threshold. No deletion required.")
+
+    except mysql.connector.Error as e:
+        print(f"Error while deleting records from sfvis_cam{station}: {e}")
+        connection.rollback()  # Rollback to maintain data integrity
+
+    finally:
+        # Optional: Ensures cursor cleanup in case of any issues
+        cursor.close()
 
 # Function to publish count data to MySQL database (Non-blocking using threading)
 def publish_to_mysql(people_count, station, time_spent, status, previous_status, sfvis, presence_rate, presence_total):
@@ -186,42 +200,50 @@ def publish_to_mysql(people_count, station, time_spent, status, previous_status,
         try:
             connection = mysql.connector.connect(**db_config)
             cursor = connection.cursor()
+            
+            timestamp = datetime.now()
+
+            if not sfvis.isalnum() or not str(station).isdigit():
+                raise ValueError("Invalid table name or station number.")
 
             # Insert query to the database
+            query_sfvis = (
+                f"INSERT INTO sfvis{sfvis} "
+                "(Timestamp, WorkStation_Camera, Vision_System, Old_Status, {time_field}New_Status, People_Count, Frame_Rate, Presence_Change_Total, Presence_Change_Rate) "
+                "VALUES (%s, %s, %s, %s, {time_placeholder}%s, %s, %s, %s, %s)"
+            )
+            query_cam = (
+                f"INSERT INTO sfvis_cam{station} "
+                "(Timestamp, WorkStation_Camera, Vision_System, Old_Status, {time_field}New_Status, People_Count, Frame_Rate, Presence_Change_Total, Presence_Change_Rate) "
+                "VALUES (%s, %s, %s, %s, {time_placeholder}%s, %s, %s, %s, %s)"
+            )
+
             if time_spent:
-                query = ("INSERT INTO sfvis0" + str(sfvis) +"_cvdata"
-                         "(Timestamp, WorkStation_Camera, Vision_System, Old_Status, Period_Status_last, New_Status, People_Count, Frame_Rate, Presence_Change_Total, Presence_Change_Rate) "
-                         "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
-                data = (datetime.now(), station, sfvis, previous_status, time_spent, status, people_count, frame_rate, presence_total, presence_rate)
-
-                query1 = ("INSERT INTO sfvis0" + str(sfvis) +"_grafdash"
-                         "(Timestamp, WorkStation_Camera, Vision_System, Old_Status, Period_Status_last, New_Status, People_Count, Frame_Rate, Presence_Change_Total, Presence_Change_Rate) "
-                         "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
-                data1 = (datetime.now(), station, sfvis, previous_status, time_spent, status, people_count, frame_rate, presence_total, presence_rate)
+                # Queries with time spent
+                query_sfvis = query_sfvis.format(time_field="Period_Status_Last, ", time_placeholder="%s, ")
+                query_cam = query_cam.format(time_field="Period_Status_Last, ", time_placeholder="%s, ")
+                data_sfvis = (timestamp, station, sfvis, previous_status, time_spent, status, people_count, frame_rate, presence_total, presence_rate)
+                data_cam = (timestamp, station, sfvis, previous_status, time_spent, status, people_count, frame_rate, presence_total, presence_rate)
             else:
-                query = ("INSERT INTO sfvis0" + str(sfvis) + "_cvdata"
-                         "(Timestamp, WorkStation_Camera, Vision_System, Old_Status, New_Status, People_Count, Frame_Rate, Presence_Change_Total, Presence_Change_Rate) "
-                         "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)")
-                data = (datetime.now(), station, sfvis, previous_status, status, people_count, frame_rate, presence_total, presence_rate)
-                
-                query1 = ("INSERT INTO sfvis0" + str(sfvis) + "_grafdash"
-                         "(Timestamp, WorkStation_Camera, Vision_System, Old_Status, New_Status, People_Count, Frame_Rate, Presence_Change_Total, Presence_Change_Rate) "
-                         "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
-                data1 = (datetime.now(), station, sfvis, previous_status, status, people_count, frame_rate, presence_total, presence_rate)
+                # Queries without time spent
+                query_sfvis = query_sfvis.format(time_field="", time_placeholder="")
+                query_cam = query_cam.format(time_field="", time_placeholder="")
+                data_sfvis = (timestamp, station, sfvis, previous_status, status, people_count, frame_rate, presence_total, presence_rate)
+                data_cam = (timestamp, station, sfvis, previous_status, status, people_count, frame_rate, presence_total, presence_rate)
 
-            
-            # Call method for DELETE query
-            delete_query(cursor, connection, station)
-            
             # Execute the query
-            cursor.execute(query, data)
-            cursor.execute(query1, data1)
-            connection.commit()
+            cursor.execute(query_sfvis, data_sfvis)
+            cursor.execute(query_cam, data_cam)
 
             print(f"Published to MySQL: {people_count} people at Cam{station}")
 
-        except mysql.connector.Error as err:
-            print(f"Error: {err}")
+            delete_query(cursor, connection, station)
+
+        except Error as err:
+            print(f"Database error: {err}")
+        except ValueError as e:
+            print(f"Validation error: {e}")
+
         finally:
             if connection.is_connected():
                 cursor.close()
@@ -250,7 +272,6 @@ def check_status(people_count, station, status, time_started, previous_status, s
 
     return status, time_started, previous_status, presence_rate, presence_total
 
-
 def main():
     global frame1, frame2
 
@@ -277,8 +298,15 @@ def main():
     presence_rate1 = 0
     presence_rate2 = 0
 
+    # Get the welding booth
+    station1 = get_workstation(sfvis, 0)
+    station2 = get_workstation(sfvis, 2)
+
     overall_time = time.time()
     checkpoint = None
+
+    create_table(sfvis, station1)
+    create_table(sfvis, station2)
 
     while True:
         ret1, frame1 = cap1.read()
@@ -307,15 +335,10 @@ def main():
         status1 = get_workstation_status(people_count1)
         status2 = get_workstation_status(people_count2)
 
-        # Get the welding booth
-        station1 = get_workstation(sfvis, 0)
-        station2 = get_workstation(sfvis, 2)
-
         # Check for change of status and publish information to the database   
         status1, time_started1, previous_status1, presence_rate1, presence_total1 = check_status(people_count1, station1, status1, time_started1, previous_status1, sfvis, presence_total1, presence_rate1)
         status2, time_started2, previous_status2, presence_rate2, presence_total2 = check_status(people_count2, station2, status2, time_started2, previous_status2, sfvis, presence_total2, presence_rate2)
             
-
         check_time = int(time.time() - overall_time)
         
         if not pause:
@@ -347,10 +370,6 @@ def main():
             if str(f"{testing:.1f}") == "1.0":
                 pause = False
                 checkpoint = None
-
-        # Exit on 'q' key press
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
 
     cap1.release()
     cap2.release()
