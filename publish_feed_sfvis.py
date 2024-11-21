@@ -14,6 +14,17 @@ app = Flask(__name__)
 frame1 = None
 frame2 = None
 
+sfvis = "01" # This value is unique for each SFVIS board
+camera_id1 = 0  # This value will never change
+camera_id2 = 4  # This value will never change, but check if it's correct
+
+db_config = {
+            'user': 'root',
+            'password': '********',
+            'host': 'sfmysql02.sf.local',
+            'database': 'test'
+        }
+
 # Initialize the camera using OpenCV
 def initialize_camera(camera_id):
     cap = cv2.VideoCapture(camera_id)  # Open cameras
@@ -104,15 +115,74 @@ def get_working_time(start):
     
     return time_spent
 
+def create_table(sfvis, station):    
+    try:
+        connection = mysql.connector.connect(**db_config)
+        cursor = connection.cursor()
+
+        # Create table for cam 1
+        create_table_cam1_query = f"""
+        CREATE TABLE IF NOT EXISTS `sfvis_cam{station}` (
+            `Timestamp` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            `Workstation_Camera` INT NOT NULL,
+            `Vision_System` INT NOT NULL,
+            `Old_Status` VARCHAR(45) NOT NULL,
+            `Period_Status_Last` TIME(6) DEFAULT NULL,
+            `New_Status` VARCHAR(45) NOT NULL,
+            `People_Count` INT NOT NULL,
+            `Frame_Rate` INT NOT NULL,
+            `Presence_Change_Total` INT NOT NULL,
+            `Presence_Change_Rate` INT NOT NULL
+        )
+        """
+        cursor.execute(create_table_cam1_query)
+        print(f"Table `sfvis_cam{station}` is ready.")
+
+        # Create table for sfvis
+        create_table_sfvis_query = f"""
+            CREATE TABLE IF NOT EXISTS `sfvis{sfvis}` (
+                `Timestamp` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `Workstation_Camera` INT NOT NULL,
+                `Vision_System` INT NOT NULL,
+                `Old_Status` VARCHAR(45) NOT NULL,
+                `Period_Status_Last` TIME(6) DEFAULT NULL,
+                `New_Status` VARCHAR(45) NOT NULL,
+                `People_Count` INT NOT NULL,
+                `Frame_Rate` INT NOT NULL,
+                `Presence_Change_Total` INT NOT NULL,
+                `Presence_Change_Rate` INT NOT NULL
+            )
+            """
+        cursor.execute(create_table_sfvis_query)
+        print(f"Table `sfvis{sfvis}` is ready.")
+
+    except mysql.connector.Error as e:
+        print(f"MySQL Error: {e}")
+
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection is closed")
+
+# Function to delete oldest item of the Grafana on the MySQL
+def delete_query(cursor, connection, station):
+    count_query = f"SELECT COUNT(*) FROM sfvis_cam{str(station)};"
+    cursor.execute(count_query)
+    row_count = cursor.fetchone()[0]
+
+    if row_count >= 10:
+        delete_query = f"""
+            DELETE FROM sfvis_cam{str(station)} WHERE Timestamp = (SELECT Timestamp FROM (SELECT Timestamp FROM sfvis_cam{str(station)} ORDER BY Timestamp ASC LIMIT 1) AS subquery);>
+            """
+
+        # Execute the DELETE query
+        cursor.execute(delete_query)
+        connection.commit()
+
 # Function to publish count data to MySQL database (Non-blocking using threading)
 def publish_to_mysql(people_count, station, time_spent, status, previous_status, sfvis, presence_rate, presence_total):
     def publish():
-        db_config = {
-            'user': 'root',
-            'password': '********',
-            'host': 'sfmysql02.sf.local',
-            'database': 'test'
-        }
         try:
             connection = mysql.connector.connect(**db_config)
             cursor = connection.cursor()
@@ -140,9 +210,9 @@ def publish_to_mysql(people_count, station, time_spent, status, previous_status,
                 data1 = (datetime.now(), station, sfvis, previous_status, status, people_count, frame_rate, presence_total, presence_rate)
 
             
-            # Execute the DELETE query
-            cursor.execute("DELETE FROM sfvis0" + str(sfvis) + "_grafdash ORDER BY Timestamp ASC LIMIT 1;")
-
+            # Call method for DELETE query
+            delete_query(cursor, connection, station)
+            
             # Execute the query
             cursor.execute(query, data)
             cursor.execute(query1, data1)
@@ -183,10 +253,6 @@ def check_status(people_count, station, status, time_started, previous_status, s
 
 def main():
     global frame1, frame2
-
-    sfvis = 1 # This value is unique for each SFVIS board
-    camera_id1 = 0  # This value will never change
-    camera_id2 = 4  # This value will never change, but check if it's correct
 
     # Initialize the camera and model
     cap1 = initialize_camera(camera_id1)
