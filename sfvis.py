@@ -177,10 +177,15 @@ def delete_query(cursor, connection, station):
     try:
         if row_count >= 10:
             delete_query = f"""
-                DELETE FROM test.sfvis_cam{str(station)} ORDER BY Timestamp ASC LIMIT 1;
+                DELETE FROM sfvis_cam{station}
+                WHERE Timestamp = (
+                    SELECT MIN(Timestamp)
+                    FROM sfvis_cam{station}
+                )
+                LIMIT 1;
                 """
 
-            cursor.execute(delete_query, multi=True)  #multi=True here
+            cursor.execute(delete_query)  #multi=True here
             connection.commit()
             print(f"Oldest record deleted from sfvis_cam{station}.")
         else:
@@ -189,10 +194,6 @@ def delete_query(cursor, connection, station):
     except mysql.connector.Error as e:
         print(f"Error while deleting records from sfvis_cam{station}: {e}")
         connection.rollback()  # Rollback to maintain data integrity
-
-    finally:
-        # Optional: Ensures cursor cleanup in case of any issues
-        cursor.close()
 
 # Function to publish count data to MySQL database (Non-blocking using threading)
 def publish_to_mysql(people_count, station, time_spent, status, previous_status, sfvis, presence_rate, presence_total):
