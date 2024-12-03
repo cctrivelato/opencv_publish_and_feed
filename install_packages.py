@@ -37,19 +37,19 @@ def install_packages():
         print(f"Creating directory {jetson_inference_dir}")
         os.makedirs(jetson_inference_dir)
 
-    # Clone the Jetson Inference repository into the new directory
-    os.chdir(jetson_inference_dir)
-    run_command("git clone --recursive https://github.com/dusty-nv/jetson-inference")
+        # Clone the Jetson Inference repository into the new directory
+        os.chdir(jetson_inference_dir)
+        run_command("git clone --recursive https://github.com/dusty-nv/jetson-inference")
 
-    # Install Jetson Inference (assumes you have the necessary environment)
-    os.chdir(os.path.join(jetson_inference_dir, "jetson-inference"))
-    run_command("git submodule update --init")
-    run_command("mkdir build")
-    os.chdir("build")
-    run_command("cmake ../")
-    run_command("make")
-    run_command("sudo make install")
-    run_command("sudo ldconfig")
+        # Install Jetson Inference (assumes you have the necessary environment)
+        os.chdir(os.path.join(jetson_inference_dir, "jetson-inference"))
+        run_command("git submodule update --init")
+        run_command("mkdir build")
+        os.chdir("build")
+        run_command("cmake ../")
+        run_command("make")
+        run_command("sudo make install")
+        run_command("sudo ldconfig")
 
     run_command("sudo apt update \
                 sudo apt install -y \
