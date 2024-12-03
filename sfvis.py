@@ -179,10 +179,14 @@ def delete_query(cursor, connection, station):
             delete_query = f"""
                 DELETE FROM sfvis_cam{station}
                 WHERE Timestamp = (
-                    SELECT MIN(Timestamp)
-                    FROM sfvis_cam{station}
-                )
-                LIMIT 1;
+                    SELECT Timestamp
+                    FROM (
+                        SELECT Timestamp
+                        FROM sfvis_cam{station}
+                        ORDER BY Timestamp ASC
+                        LIMIT 1
+                    ) AS subquery
+                );
                 """
 
             cursor.execute(delete_query)  #multi=True here
