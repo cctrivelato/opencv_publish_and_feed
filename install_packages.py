@@ -17,9 +17,6 @@ def install_packages():
     # Update package lists
     run_command("sudo apt update")
 
-    # Update package lists
-    run_command("sudo apt install git cmake python3-pip")
-
     # Install MySQL Connector for Python
     run_command("pip3 install mysql-connector-python")
 
@@ -51,39 +48,11 @@ def install_packages():
         run_command("sudo make install")
         run_command("sudo ldconfig")
 
-    run_command("sudo apt update \
-                sudo apt install -y \
-                        build-essential \
-                        cmake \
-                        pkg-config \
-                        libjpeg-dev \
-                        libpng-dev \
-                        libtiff-dev \
-                        libdcmtk-dev \
-                        gfortran \
-                        python3-dev \
-                        libeigen3-dev \
-                        libblas-dev \
-                        liblapack-dev \
-                        libgtk2.0-dev \
-                        libvtk6-dev \
-                        libgstreamer1.0-dev \
-                        libgstreamer-plugins-base1.0-dev \
-                        gstreamer1.0-tools \
-                        gstreamer1.0-plugins-good \
-                        gstreamer1.0-plugins-bad \
-                        gstreamer1.0-plugins-ugly \
-                        gstreamer1.0-libav \
-                        libcanberra-gtk-module \
-                        libgdk-pixbuf2.0-dev")
-
     run_command("pip3 install opencv-python")
 
-    run_command("pip3 install opencv-python-headless")
+    run_command("sudo apt install -y chrony")
 
-    run_command("sudo apt-get install libgtk2.0-dev")
-
-    run_command("sudo apt-get install pkg-config")
+    run_command("sudo systemctl enable --now chrony.service")
 
     # Install additional Python libraries
     run_command("pip3 install numpy")
