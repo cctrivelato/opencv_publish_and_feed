@@ -14,7 +14,10 @@ app = Flask(__name__)
 frame1 = None
 frame2 = None
 
-sfvis = "01" # This value is unique for each SFVIS board
+# Get machine's hostname
+hostname = socket.gethostname()
+
+sfvis = hostname # This value is unique for each SFVIS board
 camera_id1 = 0  # This value will never change
 camera_id2 = 2  # This value will never change, but check if it's correct
 
@@ -24,9 +27,6 @@ db_config = {
             'host': 'localhost',
             'database': 'test'
         }
-
-# Get machine's hostname
-hostname = socket.gethostname()
 
 # Initialize the camera using OpenCV
 def initialize_camera(camera_id):
@@ -143,7 +143,7 @@ def create_table(sfvis, station):
 
         # Create table for sfvis
         create_table_sfvis_query = f"""
-            CREATE TABLE IF NOT EXISTS `sfvis{sfvis}` (
+            CREATE TABLE IF NOT EXISTS `{sfvis}` (
                 `Timestamp` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 `Workstation_Camera` INT NOT NULL,
                 `Vision_System` INT NOT NULL,
@@ -157,7 +157,7 @@ def create_table(sfvis, station):
             )
             """
         cursor.execute(create_table_sfvis_query)
-        print(f"Table `sfvis{sfvis}` is ready.")
+        print(f"Table `{sfvis}` is ready.")
 
     except mysql.connector.Error as e:
         print(f"MySQL Error: {e}")
@@ -213,7 +213,7 @@ def publish_to_mysql(people_count, station, time_spent, status, previous_status,
 
             # Insert query to the database
             query_sfvis = (
-                f"INSERT INTO sfvis{sfvis} "
+                f"INSERT INTO {sfvis} "
                 "(Timestamp, WorkStation_Camera, Vision_System, Old_Status, {time_field}New_Status, People_Count, Frame_Rate, Presence_Change_Total, Presence_Change_Rate) "
                 "VALUES (%s, %s, %s, %s, {time_placeholder}%s, %s, %s, %s, %s)"
             )
