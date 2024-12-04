@@ -5,6 +5,7 @@ import jetson.utils
 import mysql.connector
 from mysql.connector import Error
 import time
+import getpass
 from datetime import datetime, timedelta
 import threading
 from flask import Flask, Response
@@ -17,23 +18,36 @@ frame2 = None
 # Get machine's hostname
 hostname = socket.gethostname()
 
-print(hostname)
-
-sfvis = hostname # This value is unique for each SFVIS board
 camera_id1 = 0  # This value will never change
 camera_id2 = 2  # This value will never change, but check if it's correct
 
-username = input()
-pwd = input()
-host = input()
-database = input()
+username = None
+pwd = None
+host = None
+database = None
 
-db_config = {
+# Collect DB details from User
+def db_details():
+    print("Insert here your Database Info ->")
+    host = input("Host: ")
+    db = input("Database: ")
+    username = input("Username: ")
+    pwd = getpass.getpass("Password: ")
+
+    db = {
             'user': username,
             'password': pwd,
             'host': host,
             'database': database
         }
+    
+    return db
+
+# Collects hostname and returns only its integer unique identification
+def findSFVISno (hostname):
+    import re
+    number_of_sfvis = re.search(r'\d+', hostname)
+    return number_of_sfvis.group() if number_of_sfvis else None
 
 # Initialize the camera using OpenCV
 def initialize_camera(camera_id):
@@ -150,7 +164,7 @@ def create_table(sfvis, station):
 
         # Create table for sfvis
         create_table_sfvis_query = f"""
-            CREATE TABLE IF NOT EXISTS `{sfvis}` (
+            CREATE TABLE IF NOT EXISTS `sfvis{sfvis}` (
                 `Timestamp` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 `Workstation_Camera` INT NOT NULL,
                 `Vision_System` INT NOT NULL,
@@ -164,7 +178,7 @@ def create_table(sfvis, station):
             )
             """
         cursor.execute(create_table_sfvis_query)
-        print(f"Table `{sfvis}` is ready.")
+        print(f"Table `sfvis{sfvis}` is ready.")
 
     except mysql.connector.Error as e:
         print(f"MySQL Error: {e}")
@@ -220,7 +234,7 @@ def publish_to_mysql(people_count, station, time_spent, status, previous_status,
 
             # Insert query to the database
             query_sfvis = (
-                f"INSERT INTO {sfvis} "
+                f"INSERT INTO sfvis{sfvis} "
                 "(Timestamp, WorkStation_Camera, Vision_System, Old_Status, {time_field}New_Status, People_Count, Frame_Rate, Presence_Change_Total, Presence_Change_Rate) "
                 "VALUES (%s, %s, %s, %s, {time_placeholder}%s, %s, %s, %s, %s)"
             )
@@ -285,6 +299,8 @@ def check_status(people_count, station, status, time_started, previous_status, s
     return status, time_started, previous_status, presence_rate, presence_total
 
 def main():
+    sfvis = findSFVISno(hostname)
+
     global frame1, frame2
 
     # Initialize the camera and model
@@ -388,4 +404,5 @@ def main():
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
+    db_config = db_details()
     main()
