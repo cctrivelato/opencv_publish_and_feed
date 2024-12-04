@@ -30,7 +30,7 @@ database = None
 def db_details():
     print("Insert here your Database Info ->")
     host = input("Host: ")
-    db = input("Database: ")
+    database = input("Database: ")
     username = input("Username: ")
     pwd = getpass.getpass("Password: ")
 
