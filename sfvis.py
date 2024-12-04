@@ -21,11 +21,16 @@ sfvis = hostname # This value is unique for each SFVIS board
 camera_id1 = 0  # This value will never change
 camera_id2 = 2  # This value will never change, but check if it's correct
 
+username = input()
+pwd = input()
+host = input()
+database = input()
+
 db_config = {
-            'user': 'root',
-            'password': '********',
-            'host': 'localhost',
-            'database': 'test'
+            'user': username,
+            'password': pwd,
+            'host': host,
+            'database': database
         }
 
 # Initialize the camera using OpenCV
