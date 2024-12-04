@@ -17,6 +17,8 @@ frame2 = None
 # Get machine's hostname
 hostname = socket.gethostname()
 
+print(hostname)
+
 sfvis = hostname # This value is unique for each SFVIS board
 camera_id1 = 0  # This value will never change
 camera_id2 = 2  # This value will never change, but check if it's correct
