@@ -43,6 +43,8 @@ def db_details():
     
     return db
 
+db_config = db_details()
+
 # Collects hostname and returns only its integer unique identification
 def findSFVISno (hostname):
     import re
@@ -404,5 +406,4 @@ def main():
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    db_config = db_details()
     main()
