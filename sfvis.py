@@ -192,13 +192,14 @@ def create_table(sfvis, station):
             print("MySQL connection is closed")
 
 # Function to delete oldest item of the Grafana on the MySQL
-def delete_query(cursor, connection, station):
+def delete_function(cursor, connection, station):
     count_query = f"SELECT COUNT(*) FROM sfvis_cam{str(station)};"
     cursor.execute(count_query)
     row_count = cursor.fetchone()[0]
+    print(f"Row count for sfvis_cam{station}: {row_count}")
 
     try:
-        if row_count >= 10:
+        if row_count > 10:
             delete_query = f"""
                 DELETE FROM sfvis_cam{station}
                 WHERE Timestamp = (
@@ -211,16 +212,18 @@ def delete_query(cursor, connection, station):
                     ) AS subquery
                 );
                 """
-
             cursor.execute(delete_query)  #multi=True here
             connection.commit()
             print(f"Oldest record deleted from sfvis_cam{station}.")
+        
         else:
             print(f"Row count in sfvis_cam{station} is below the threshold. No deletion required.")
 
     except mysql.connector.Error as e:
         print(f"Error while deleting records from sfvis_cam{station}: {e}")
         connection.rollback()  # Rollback to maintain data integrity
+
+    print(f"Row count for sfvis_cam{station}: {row_count}")    
 
 # Function to publish count data to MySQL database (Non-blocking using threading)
 def publish_to_mysql(people_count, station, time_spent, status, previous_status, sfvis, presence_rate, presence_total):
@@ -234,38 +237,36 @@ def publish_to_mysql(people_count, station, time_spent, status, previous_status,
             if not sfvis.isalnum() or not str(station).isdigit():
                 raise ValueError("Invalid table name or station number.")
 
-            # Insert query to the database
-            query_sfvis = (
-                f"INSERT INTO sfvis{sfvis} "
-                "(Timestamp, WorkStation_Camera, Vision_System, Old_Status, {time_field}New_Status, People_Count, Frame_Rate, Presence_Change_Total, Presence_Change_Rate) "
-                "VALUES (%s, %s, %s, %s, {time_placeholder}%s, %s, %s, %s, %s)"
-            )
-            query_cam = (
-                f"INSERT INTO sfvis_cam{station} "
+            # Base SQL queries
+            base_query = (
+                "INSERT INTO {table} "
                 "(Timestamp, WorkStation_Camera, Vision_System, Old_Status, {time_field}New_Status, People_Count, Frame_Rate, Presence_Change_Total, Presence_Change_Rate) "
                 "VALUES (%s, %s, %s, %s, {time_placeholder}%s, %s, %s, %s, %s)"
             )
 
+            # Adjust query for time_spent
             if time_spent:
-                # Queries with time spent
-                query_sfvis = query_sfvis.format(time_field="Period_Status_Last, ", time_placeholder="%s, ")
-                query_cam = query_cam.format(time_field="Period_Status_Last, ", time_placeholder="%s, ")
-                data_sfvis = (timestamp, station, sfvis, previous_status, time_spent, status, people_count, frame_rate, presence_total, presence_rate)
-                data_cam = (timestamp, station, sfvis, previous_status, time_spent, status, people_count, frame_rate, presence_total, presence_rate)
+                time_field = "Period_Status_Last, "
+                time_placeholder = "%s, "
+                data = (timestamp, station, sfvis, previous_status, time_spent, status, people_count, frame_rate, presence_total, presence_rate)
             else:
-                # Queries without time spent
-                query_sfvis = query_sfvis.format(time_field="", time_placeholder="")
-                query_cam = query_cam.format(time_field="", time_placeholder="")
-                data_sfvis = (timestamp, station, sfvis, previous_status, status, people_count, frame_rate, presence_total, presence_rate)
-                data_cam = (timestamp, station, sfvis, previous_status, status, people_count, frame_rate, presence_total, presence_rate)
+                time_field = ""
+                time_placeholder = ""
+                data = (timestamp, station, sfvis, previous_status, status, people_count, frame_rate, presence_total, presence_rate)
 
-            # Execute the query
-            cursor.execute(query_sfvis, data_sfvis)
-            cursor.execute(query_cam, data_cam)
+            # Final queries
+            query_sfvis = base_query.format(table=f"sfvis{sfvis}", time_field=time_field, time_placeholder=time_placeholder)
+            query_cam = base_query.format(table=f"sfvis_cam{station}", time_field=time_field, time_placeholder=time_placeholder)
+
+            # Execute queries
+            cursor.execute(query_sfvis, data)
+            cursor.execute(query_cam, data)
+
+            connection.commit()
 
             print(f"Published to MySQL: {people_count} people at Cam{station}")
 
-            delete_query(cursor, connection, station)
+            delete_function(cursor, connection, station)
 
         except Error as err:
             print(f"Database error: {err}")
