@@ -17,6 +17,9 @@ def install_packages():
     # Update package lists
     run_command("sudo apt update")
 
+    # Install pip3
+    run_command("sudo apt install python3-pip -y")
+
     # Install MySQL Connector for Python
     run_command("pip3 install mysql-connector-python")
 
