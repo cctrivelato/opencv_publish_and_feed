@@ -53,10 +53,6 @@ def install_packages():
 
     run_command("pip3 install opencv-python")
 
-    run_command("sudo apt install -y chrony")
-
-    run_command("sudo systemctl enable --now chrony.service")
-
     # Install additional Python libraries
     run_command("pip3 install numpy")
 
