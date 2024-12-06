@@ -211,13 +211,11 @@ def delete_function(cursor, connection, station):
                     ) AS subquery
                 );
                 """
-            print()
             cursor.execute(delete_query)  #multi=True here
             connection.commit()
             print(f"Oldest record deleted from sfvis_cam{station}.")
         
         else:
-            print()
             print(f"Row count in sfvis_cam{station} is {row_count} and that's below the threshold. No deletion required.")
 
     except mysql.connector.Error as e:
@@ -258,7 +256,6 @@ def publish_to_mysql(people_count, station, time_spent, status, previous_status,
             query_cam = base_query.format(table=f"sfvis_cam{station}", time_field=time_field, time_placeholder=time_placeholder)
 
             # Execute queries
-            print()
             cursor.execute(query_sfvis, data)
             cursor.execute(query_cam, data)
 
