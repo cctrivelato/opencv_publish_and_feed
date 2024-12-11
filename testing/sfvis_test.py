@@ -322,7 +322,7 @@ def main():
     model = initialize_model()
 
     print("How many cameras are you working with?")
-    camera_amount = input()
+    camera_amount = int(input())
     camera_group = [camera_amount]
     camera_id = [camera_amount]
 
