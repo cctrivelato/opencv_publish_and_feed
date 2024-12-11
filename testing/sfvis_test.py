@@ -12,7 +12,11 @@ from flask import Flask, Response
 
 frame_rate = 40
 app = Flask(__name__)
-frame = []
+frame = {}
+frame1 = None
+frame2 = None
+
+camera_group = {}
 
 # Get machine's hostname
 hostname = socket.gethostname()
@@ -43,7 +47,7 @@ db_config = db_details()
 
 class Camera:
     def __init__(self, station, sfvis, previous_status, time_spent, status, people_count, frame_rate, presence_total, presence_60, presence_rate, ret, frame, cap, time_started, first_time, pause, checkpoint, cuda_img, detections):
-        self.worstation_camera = station
+        self.station = station
         self.sfvis = sfvis
         self.previous_status = previous_status
         self.time_spent = time_spent
@@ -62,6 +66,7 @@ class Camera:
         self.checkpoint = checkpoint
         self.cuda_img = cuda_img
         self.detections = detections
+        self.jpeg = None
 
 # Collects hostname and returns only its integer unique identification
 def findSFVISno (hostname):
@@ -91,11 +96,20 @@ def get_people_count(detections):
     people_count = sum(1 for detection in detections if detection.ClassID == 1 and detection.Confidence > 0.60)  # ClassID 1 is for 'person' and check if confidence level is bigger than 60%
     return people_count
 
-# Function to generate frames for Camera 2
-def generate_camera(frame):
+# Function to generate frames for Camera 1
+def generate_camera_1():
     while True:
-        if frame is not None:
-            ret, jpeg = cv2.imencode('.jpg', frame)
+        if camera_group[0].frame is not None:
+            ret, jpeg = cv2.imencode('.jpg', camera_group[0].frame)
+            if ret:
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
+
+# Function to generate frames for Camera 2
+def generate_camera_2():
+    while True:
+        if camera_group[1].frame is not None:
+            ret, jpeg = cv2.imencode('.jpg', camera_group[1].frame)
             if ret:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
@@ -103,13 +117,13 @@ def generate_camera(frame):
 # Flask route for Camera 1 feed
 @app.route('/camera1')
 def camera1_feed():
-    return Response(generate_camera(frame[0]),
+    return Response(generate_camera_1(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # Flask route for Camera 2 feed
 @app.route('/camera2')
 def camera2_feed():
-    return Response(generate_camera(frame[1]),
+    return Response(generate_camera_2(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # Method to get the workstation info
@@ -295,7 +309,7 @@ def check_status(camera):
             publish_to_mysql(camera.people_count, camera.station, camera.time_spent, camera.status, camera.previous_status, camera.sfvis, camera.presence_rate, camera.presence_total)
             time.sleep(0.5)
             
-            camera.set_previous_status("Occupied")
+            camera.previous_status = "Occupied"
 
         elif camera.status == "Vacant" and camera.previous_status == "Occupied":
             camera.presence_rate = 1 + camera.presence_rate
@@ -308,8 +322,8 @@ def check_status(camera):
             camera.time_started = None
             camera.time_spent = None
 
-def regular_post(camera):
-    if (camera.check_time % 60) == 0:
+def regular_post(camera, check_time):
+    if (check_time % 60) == 0:
         camera.presence_total = camera.presence_total + camera.presence_rate
         camera.presence_60 = camera.presence_rate
         camera.presence_rate = 0
@@ -321,28 +335,35 @@ def main():
     sfvis = findSFVISno(hostname)
     model = initialize_model()
 
+    global frame1, frame2
+
     print("How many cameras are you working with?")
     camera_amount = int(input())
-    camera_group = [camera_amount]
-    camera_id = [camera_amount]
+    camera_group = {}
+    camera_id = {}
 
-    overall_time = time.time()
+    print("Where is the camera located at?")
 
     try:
         for i in range(camera_amount):
-            print("Where is the camera located at?")
-            camera_id[i] = int(input("Camera " + i + ": "))
-
+            print("Camera " + str(i+1) + ": ")
+            camera_id[i] = int(input())
     except Error as err:
         print(f"Error in the user input: {err}")
+        return
 
     for i in range(camera_amount):
-        cam_place = i + 1
-        camera_group[i] = Camera(get_workstation(sfvis, cam_place), sfvis, "Vacant", None, "Vacant", 0, frame_rate, 0, 0, None, frame[i], initialize_camera(camera_id[i]), None, True, False, None, None, None)
+        cam_place = camera_id[i]
+        cap = initialize_camera(cam_place)
+        if cap is None:
+            print(f"Skipping camera {i + 1} due to initialization error.")
+            continue
+        camera_group[i] = Camera(get_workstation(sfvis, i+1), sfvis, "Vacant", None, "Vacant", 0, frame_rate, 0, 0, 0, None, None, cap, None, True, False, None, None, None)
         create_table(sfvis, camera_group[i].station)
 
-        if camera_group[i].cap is None or model is None:
-            return
+    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)).start()
+
+    overall_time = time.time()
 
     while True:
         for i in range(camera_amount):
@@ -350,8 +371,6 @@ def main():
             if not camera_group[i].ret:
                 print("Error: Failed to read from the camera 1.")
                 break
-            
-            frame[i] = camera_group[i].frame
 
             camera_group[i].cuda_img = jetson.utils.cudaFromNumpy(camera_group[i].frame)
             camera_group[i].detections = model.Detect(camera_group[i].cuda_img)
@@ -365,7 +384,7 @@ def main():
             if not camera_group[i].pause:
                 if (check_time % 20) == 0:
                     camera_group[i].checkpoint = time.time()    
-                    regular_post(camera_group[i])
+                    regular_post(camera_group[i], check_time)
 
             if camera_group[i].checkpoint is not None: 
                 testing = time.time() - camera_group[i].checkpoint
