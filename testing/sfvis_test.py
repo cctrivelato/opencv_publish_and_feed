@@ -99,8 +99,8 @@ def get_people_count(detections):
 # Function to generate frames for Camera 1
 def generate_camera_1():
     while True:
-        if camera_group[0].frame is not None:
-            ret, jpeg = cv2.imencode('.jpg', camera_group[0].frame)
+        if frame1 is not None:
+            ret, jpeg = cv2.imencode('.jpg', frame1)
             if ret:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
@@ -108,8 +108,8 @@ def generate_camera_1():
 # Function to generate frames for Camera 2
 def generate_camera_2():
     while True:
-        if camera_group[1].frame is not None:
-            ret, jpeg = cv2.imencode('.jpg', camera_group[1].frame)
+        if frame2 is not None:
+            ret, jpeg = cv2.imencode('.jpg', frame2)
             if ret:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
@@ -339,27 +339,23 @@ def main():
 
     print("How many cameras are you working with?")
     camera_amount = int(input())
-    camera_group = {}
-    camera_id = {}
 
     print("Where is the camera located at?")
 
     try:
         for i in range(camera_amount):
             print("Camera " + str(i+1) + ": ")
-            camera_id[i] = int(input())
+            camera_id = int(input())
+            cap = initialize_camera(camera_id)
+            if cap is None:
+                print(f"Skipping camera {i + 1} due to initialization error.")
+                continue
+
+            camera_group[i] = Camera(get_workstation(sfvis, i+1), sfvis, "Vacant", None, "Vacant", 0, frame_rate, 0, 0, 0, None, None, cap, None, True, False, None, None, None)
+            create_table(sfvis, camera_group[i].station)
+
     except Error as err:
         print(f"Error in the user input: {err}")
-        return
-
-    for i in range(camera_amount):
-        cam_place = camera_id[i]
-        cap = initialize_camera(cam_place)
-        if cap is None:
-            print(f"Skipping camera {i + 1} due to initialization error.")
-            continue
-        camera_group[i] = Camera(get_workstation(sfvis, i+1), sfvis, "Vacant", None, "Vacant", 0, frame_rate, 0, 0, 0, None, None, cap, None, True, False, None, None, None)
-        create_table(sfvis, camera_group[i].station)
 
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)).start()
 
@@ -367,6 +363,17 @@ def main():
 
     while True:
         for i in range(camera_amount):
+            if i == 0:
+                ret1, frame1 = camera_group[i].cap.read()
+                if not ret1:
+                    print("Error: Failed to read from the camera 1.")
+                    break
+            elif i == 1:
+                ret2, frame2 = camera_group[i].cap.read()
+                if not ret2:
+                    print("Error: Failed to read from the camera 1.")
+                    break
+        
             camera_group[i].ret, camera_group[i].frame = camera_group[i].cap.read()
             if not camera_group[i].ret:
                 print("Error: Failed to read from the camera 1.")
