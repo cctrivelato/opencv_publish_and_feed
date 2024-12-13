@@ -4,6 +4,7 @@ import jetson.inference
 import jetson.utils
 import mysql.connector
 from mysql.connector import Error
+from configparser import ConfigParser
 import time
 import getpass
 from datetime import datetime, timedelta
@@ -12,7 +13,6 @@ from flask import Flask, Response
 
 frame_rate = 40
 app = Flask(__name__)
-frame = {}
 frame1 = None
 frame2 = None
 
@@ -26,24 +26,19 @@ pwd = None
 host = None
 database = None
 
-# Collect DB details from User
-def db_details():
-    print("Insert here your Database Info ->")
-    host = input("Host: ")
-    database = input("Database: ")
-    username = input("Username: ")
-    pwd = getpass.getpass("Password: ")
-
-    db = {
-            'user': username,
-            'password': pwd,
-            'host': host,
-            'database': database
-        }
-    
+def read_db_config(filename='dbconfig.ini', section='database'):
+    parser = ConfigParser()
+    parser.read(filename)
+    db = {}
+    if parser.has_section(section):
+        items = parser.items(section)
+        for item in items:
+            db[item[0]] = item[1]
+    else:
+        raise Exception(f'Section {section} not found in {filename}')
     return db
 
-db_config = db_details()
+db_config = read_db_config()
 
 class Camera:
     def __init__(self, station, sfvis, previous_status, time_spent, status, people_count, frame_rate, presence_total, presence_60, presence_rate, ret, frame, cap, time_started, first_time, pause, checkpoint, cuda_img, detections):
