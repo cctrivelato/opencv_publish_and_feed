@@ -386,16 +386,16 @@ def main():
             
             check_status(camera_group[i])
 
-            check_time = int(time.time() - overall_time)
+            camera_group[i].check_time = int(time.time() - overall_time)
 
             if not camera_group[i].pause:
-                if (check_time % 20) == 0:
+                if (camera_group[i].check_time % 20) == 0:
                     camera_group[i].checkpoint = time.time()    
-                    regular_post(camera_group[i], check_time)
+                    regular_post(camera_group[i], camera_group[i].check_time)
 
             if camera_group[i].checkpoint is not None: 
                 testing = time.time() - camera_group[i].checkpoint
-                if str(f"{testing:.1f}") == "1.0":
+                if str(f"{testing:.1f}") >= "1.0":
                     camera_group[i].pause = False
                     camera_group[i].checkpoint = None
 
