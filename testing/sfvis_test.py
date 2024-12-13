@@ -15,16 +15,8 @@ frame_rate = 40
 app = Flask(__name__)
 frame1 = None
 frame2 = None
-
 camera_group = {}
-
-# Get machine's hostname
 hostname = socket.gethostname()
-
-username = None
-pwd = None
-host = None
-database = None
 
 def read_db_config(filename='dbconfig.ini', section='database'):
     parser = ConfigParser()
