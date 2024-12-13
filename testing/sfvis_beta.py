@@ -7,6 +7,7 @@ from mysql.connector import Error
 from configparser import ConfigParser
 import time
 import getpass
+import subprocess
 from datetime import datetime, timedelta
 import threading
 from flask import Flask, Response
@@ -16,6 +17,7 @@ app = Flask(__name__)
 frame1 = None
 frame2 = None
 camera_group = {}
+local = {}
 hostname = socket.gethostname()
 
 def read_db_config(filename='dbconfig.ini', section='database'):
@@ -60,6 +62,35 @@ def findSFVISno (hostname):
     import re
     number_of_sfvis = re.search(r'\d+', hostname)
     return number_of_sfvis.group() if number_of_sfvis else None
+
+def devices(camera_devices):
+    import re
+    match = re.search(r'\d+', camera_devices)  # Search for the first sequence of digits
+    return int(match.group()) if match else None
+
+def get_camera_devices():
+    result = subprocess.run(['v4l2-ctl', '--list-devices'], capture_output=True, text=True)
+    devices = []
+    if result.returncode == 0:
+        lines = result.stdout.split('\n')
+        for i in range(len(lines)):
+            if '/dev/video' in lines[i]:
+                devices.append(lines[i].strip())
+    return devices
+
+# Get camera devices
+def place_cameras():
+    camera_devices = get_camera_devices()
+    camera_amount = int((len(camera_devices))/2)
+    print(f"{int(len(camera_devices)/2)} cameras connected to: {len(camera_devices)} devices")
+    position = {}
+    counter = 0
+    for i in range(len(camera_devices)):
+        position[i] = devices(camera_devices[i])
+        if position[i] % 2 == 0:
+            local[counter] = position[i]
+            counter = counter + 1
+    return camera_amount
 
 # Initialize the camera using OpenCV
 def initialize_camera(camera_id):
@@ -324,16 +355,13 @@ def main():
 
     global frame1, frame2
 
-    print("How many cameras are you working with?")
-    camera_amount = int(input())
-
-    print("Where is the camera located at?")
+    camera_amount = place_cameras()
+    for i in range(2):
+        print(f"Camera {i+1} is positioned in: /dev/video{local[i]}")
 
     try:
         for i in range(camera_amount):
-            print("Camera " + str(i+1) + ": ")
-            camera_id = int(input())
-            cap = initialize_camera(camera_id)
+            cap = initialize_camera(local[i])
             if cap is None:
                 print(f"Skipping camera {i + 1} due to initialization error.")
                 continue
