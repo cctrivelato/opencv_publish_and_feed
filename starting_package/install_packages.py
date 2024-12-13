@@ -17,6 +17,9 @@ def install_packages():
     # Update package lists
     run_command("sudo apt update")
 
+    # Update package lists
+    run_command("sudo apt-get install v4l-utils")
+
     # Install pip3
     run_command("sudo apt install python3-pip -y")
 
