@@ -6,6 +6,6 @@ Three folders are present in this repository:
 
 1. starting_package. Made to carry all the main files that can set an Orin Nano ready to go. Ready to collect data, publish it, and set up the page where the feed of the camera is posted.
 
-2. testing. For all the files that are in enhancement and fixes prior to officially update the main files.
+2. testing. For all the files that are in process of enhancement and fixes prior to officially update the main files.
 
 3. weblink_dashboard. For files that support the main function of the Vision System. They are both the webpage in u-format to access data post and/or camera feeds and the json file that contains the template for Grafana Dashboards to share data from the Vision System.
