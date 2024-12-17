@@ -356,6 +356,7 @@ def main():
     global frame1, frame2
 
     camera_amount = place_cameras()
+    
     for i in range(2):
         print(f"Camera {i+1} is positioned in: /dev/video{local[i]}")
 

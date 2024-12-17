@@ -45,7 +45,7 @@ def db_details():
 
     return db
 
-db_config = db_details
+db_config = db_details()
 
 # Collects hostname and returns only its integer unique identification
 def findSFVISno (hostname):
