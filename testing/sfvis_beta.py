@@ -20,7 +20,7 @@ camera_group = {}
 local = {}
 hostname = socket.gethostname()
 
-def read_db_config(filename='dbconfig.ini', section='database'):
+def read_db_config(filename='/starting_package/dbconfig.ini', section='database'):
     parser = ConfigParser()
     parser.read(filename)
     db = {}
