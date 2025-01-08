@@ -200,8 +200,7 @@ def delete_function(cursor, connection, station):
     row_count = cursor.fetchone()[0]
 
     try:
-        if row_count > 10:
-            delete_query = f"""
+        delete_query = f"""
                 DELETE FROM sfvis_cam{station}
                 WHERE Timestamp = (
                     SELECT Timestamp
@@ -213,15 +212,11 @@ def delete_function(cursor, connection, station):
                     ) AS subquery
                 );
                 """
-            print()
-            cursor.execute(delete_query)  #multi=True here
-            connection.commit()
-            print(f"Oldest record deleted from sfvis_cam{station}.")
+        print()
+        cursor.execute(delete_query)  #multi=True here
+        connection.commit()
+        print(f"Oldest record deleted from sfvis_cam{station}.")
         
-        else:
-            print()
-            print(f"Row count in sfvis_cam{station} is {row_count} and that's below the threshold. No deletion required.")
-
     except mysql.connector.Error as e:
         print(f"Error while deleting records from sfvis_cam{station}: {e}")
         connection.rollback()  # Rollback to maintain data integrity
