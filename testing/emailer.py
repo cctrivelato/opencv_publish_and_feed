@@ -20,4 +20,3 @@ def send_email_smtp (to_email, subject, body):
         print("Email sent successfully!")
     except Exception as e:
         print(f"Failed to send email: {e}")
-

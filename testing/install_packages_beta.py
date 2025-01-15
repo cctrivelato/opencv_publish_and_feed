@@ -90,7 +90,7 @@ WantedBy=multi-user.target
 if __name__ == "__main__":
     install_packages()
 
-    target_file = "sfvis.py"  # Replace with your CV script filename
+    target_file = "sfvis_beta.py"  # Replace with your CV script filename
     search_directory = os.getcwd()  # Start searching in the current directory
 
     # Find the file
