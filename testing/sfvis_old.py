@@ -7,7 +7,6 @@ from mysql.connector import Error
 from configparser import ConfigParser
 import time
 import getpass
-import subprocess
 from datetime import datetime, timedelta
 import threading
 from flask import Flask, Response
@@ -16,81 +15,43 @@ frame_rate = 40
 app = Flask(__name__)
 frame1 = None
 frame2 = None
-camera_group = {}
-local = {}
+
+# Get machine's hostname
 hostname = socket.gethostname()
 
-def read_db_config(filename='dbconfig.ini', section='database'):
-    parser = ConfigParser()
-    parser.read(filename)
-    db = {}
-    if parser.has_section(section):
-        items = parser.items(section)
-        for item in items:
-            db[item[0]] = item[1]
-    else:
-        raise Exception(f'Section {section} not found in {filename}')
+camera_id1 = 0  # This value will never change
+camera_id2 = 2  # This value will never change, but check if it's correct
+
+username = None
+pwd = None
+host = None
+database = None
+
+
+# Collect DB details from User
+def db_details():
+    print("Insert here your Database Info ->")
+    host = input("Host: ")
+    database = input("Database: ")
+    username = input("Username: ")
+    pwd = getpass.getpass("Password: ")
+
+    db = {
+            'user': username,
+            'password': pwd,
+            'host': host,
+            'database': database
+        }
+
     return db
 
-db_config = read_db_config()
-
-class Camera:
-    def __init__(self, station, sfvis, previous_status, time_spent, status, people_count, frame_rate, presence_total, presence_60, presence_rate, ret, frame, cap, time_started, first_time, pause, checkpoint, cuda_img, detections):
-        self.station = station
-        self.sfvis = sfvis
-        self.previous_status = previous_status
-        self.time_spent = time_spent
-        self.status = status
-        self.people_count = people_count
-        self.frame_rate = frame_rate
-        self.presence_total = presence_total
-        self.presence_60 = presence_60
-        self.presence_rate = presence_rate
-        self.ret = ret
-        self.frame = frame
-        self.cap = cap
-        self.time_started = time_started
-        self.first_time = first_time
-        self.pause = pause
-        self.checkpoint = checkpoint
-        self.cuda_img = cuda_img
-        self.detections = detections
-        self.jpeg = None
+db_config = db_details()
 
 # Collects hostname and returns only its integer unique identification
 def findSFVISno (hostname):
     import re
     number_of_sfvis = re.search(r'\d+', hostname)
     return number_of_sfvis.group() if number_of_sfvis else None
-
-def devices(camera_devices):
-    import re
-    match = re.search(r'\d+', camera_devices)  # Search for the first sequence of digits
-    return int(match.group()) if match else None
-
-def get_camera_devices():
-    result = subprocess.run(['v4l2-ctl', '--list-devices'], capture_output=True, text=True)
-    devices = []
-    if result.returncode == 0:
-        lines = result.stdout.split('\n')
-        for i in range(len(lines)):
-            if '/dev/video' in lines[i]:
-                devices.append(lines[i].strip())
-    return devices
-
-# Get camera devices
-def place_cameras():
-    camera_devices = get_camera_devices()
-    camera_amount = int((len(camera_devices))/2)
-    print(f"{int(len(camera_devices)/2)} cameras connected to: {len(camera_devices)} devices")
-    position = {}
-    counter = 0
-    for i in range(len(camera_devices)):
-        position[i] = devices(camera_devices[i])
-        if position[i] % 2 == 0:
-            local[counter] = position[i]
-            counter = counter + 1
-    return camera_amount
 
 # Initialize the camera using OpenCV
 def initialize_camera(camera_id):
@@ -104,7 +65,7 @@ def initialize_camera(camera_id):
     cap.set(cv2.CAP_PROP_FPS, frame_rate)  # Lower frame rate to reduce load
     
     return cap
-    
+
 # Initialize the Jetson Inference object detection model
 def initialize_model():
     return jetson.inference.detectNet("ssd-mobilenet-v2", threshold=0.5)
@@ -113,9 +74,10 @@ def initialize_model():
 def get_people_count(detections):
     people_count = sum(1 for detection in detections if detection.ClassID == 1 and detection.Confidence > 0.60)  # ClassID 1 is for 'person' and check if confidence level is bigger than 60%
     return people_count
-
+    
 # Function to generate frames for Camera 1
 def generate_camera_1():
+    global frame1
     while True:
         if frame1 is not None:
             ret, jpeg = cv2.imencode('.jpg', frame1)
@@ -125,6 +87,7 @@ def generate_camera_1():
 
 # Function to generate frames for Camera 2
 def generate_camera_2():
+    global frame2
     while True:
         if frame2 is not None:
             ret, jpeg = cv2.imencode('.jpg', frame2)
@@ -145,10 +108,10 @@ def camera2_feed():
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # Method to get the workstation info
-def get_workstation(sfvis, camera_place):
-    if camera_place == 1:
+def get_workstation(sfvis, camera_id):
+    if camera_id == 0:
         workstation = (int(sfvis)*2 - 1)
-    elif camera_place == 2:
+    elif camera_id == 2:
         workstation = (int(sfvis)*2) 
     return workstation
     
@@ -320,106 +283,129 @@ def publish_to_mysql(people_count, station, time_spent, status, previous_status,
     # Run the publish function in a separate thread to avoid blocking
     threading.Thread(target=publish).start()
 
-def check_status(camera):
-    if camera.status != camera.previous_status: 
-        if camera.status == "Occupied" and camera.previous_status == "Vacant":
-            camera.time_started = time.time()
-            publish_to_mysql(camera.people_count, camera.station, camera.time_spent, camera.status, camera.previous_status, camera.sfvis, camera.presence_rate, camera.presence_total)
+def check_status(people_count, station, status, time_started, previous_status, sfvis, presence_total, presence_rate):
+    time_spent = None
+    if status != previous_status: 
+        presence_total = 1 + presence_total
+
+        if status == "Occupied" and previous_status == "Vacant":
+            time_started = time.time()
+            publish_to_mysql(people_count, station, time_spent, status, previous_status, sfvis, presence_rate, presence_total)
             time.sleep(0.5)
-            
-            camera.previous_status = "Occupied"
+            previous_status = "Occupied"
 
-        elif camera.status == "Vacant" and camera.previous_status == "Occupied":
-            camera.presence_rate = 1 + camera.presence_rate
-
-            camera.time_spent = get_working_time(camera.time_started)
-            publish_to_mysql(camera.people_count, camera.station, camera.time_spent, camera.status, camera.previous_status, camera.sfvis, camera.presence_rate, camera.presence_total)
+        elif status == "Vacant" and previous_status == "Occupied":
+            time_spent = get_working_time(time_started)
+            publish_to_mysql(people_count, station, time_spent, status, previous_status, sfvis, presence_rate, presence_total)
             time.sleep(0.5)
-            
-            camera.previous_status = "Vacant"
-            camera.time_started = None
-            camera.time_spent = None
+            previous_status = "Vacant"
+            time_started = None
 
-def regular_post(camera, check_time):
-    if (check_time % 60) == 0:
-        camera.presence_total = camera.presence_total + camera.presence_rate
-        camera.presence_60 = camera.presence_rate
-        camera.presence_rate = 0
-
-    publish_to_mysql(camera.people_count, camera.station, None, camera.status, camera.previous_status, camera.sfvis, camera.presence_60, camera.presence_total)
-    camera.pause = True
+    return status, time_started, previous_status, presence_rate, presence_total
 
 def main():
     sfvis = findSFVISno(hostname)
-    model = initialize_model()
 
     global frame1, frame2
 
-    camera_amount = place_cameras()
+    # Initialize the camera and model
+    cap1 = initialize_camera(camera_id1)
+    cap2 = initialize_camera(camera_id2)
+    model = initialize_model()
+
+    if cap1 is None or cap2 is None or model is None:
+        return
     
-    for i in range(camera_amount):
-        print(f"Camera {i+1} is positioned in: /dev/video{local[i]}")
-
-    try:
-        for i in range(camera_amount):
-            cap = initialize_camera(local[i])
-            if cap is None:
-                print(f"Skipping camera {i + 1} due to initialization error.")
-                continue
-
-            camera_group[i] = Camera(get_workstation(sfvis, i+1), sfvis, "Vacant", None, "Vacant", 0, frame_rate, 0, 0, 0, None, None, cap, None, True, False, None, None, None)
-            create_table(sfvis, camera_group[i].station)
-
-    except Error as err:
-        print(f"Error in the user input: {err}")
-
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)).start()
 
+    previous_status1 = "Vacant"
+    previous_status2 = "Vacant"
+    time_started1 = None
+    time_started2 = None
+    first_time = True
+    first_time2 = True
+    pause = False
+
+    presence_total1 = 0
+    presence_total2 = 0
+    presence_rate1 = 0
+    presence_rate2 = 0
+
+    # Get the welding booth
+    station1 = get_workstation(sfvis, 0)
+    station2 = get_workstation(sfvis, 2)
+
     overall_time = time.time()
+    checkpoint = None
+
+    create_table(sfvis, station1)
+    create_table(sfvis, station2)
 
     while True:
-        for i in range(camera_amount):
-            if i == 0:
-                ret1, frame1 = camera_group[i].cap.read()
-                if not ret1:
-                    print("Error: Failed to read from the camera 1.")
-                    break
-            elif i == 1:
-                ret2, frame2 = camera_group[i].cap.read()
-                if not ret2:
-                    print("Error: Failed to read from the camera 1.")
-                    break
-        
-            camera_group[i].ret, camera_group[i].frame = camera_group[i].cap.read()
-            if not camera_group[i].ret:
-                print("Error: Failed to read from the camera 1.")
-                break
-
-            camera_group[i].cuda_img = jetson.utils.cudaFromNumpy(camera_group[i].frame)
-            camera_group[i].detections = model.Detect(camera_group[i].cuda_img)
-            camera_group[i].people_count = get_people_count(camera_group[i].detections)
-            camera_group[i].status = get_workstation_status(camera_group[i].people_count)
-            
-            check_status(camera_group[i])
-
-            camera_group[i].check_time = int(time.time() - overall_time)
-
-            if not camera_group[i].pause:
-                if (camera_group[i].check_time % 20) == 0:
-                    camera_group[i].checkpoint = time.time()    
-                    regular_post(camera_group[i], camera_group[i].check_time)
-
-            if camera_group[i].checkpoint is not None: 
-                testing = time.time() - camera_group[i].checkpoint
-                if str(f"{testing:.1f}") >= "1.0":
-                    camera_group[i].pause = False
-                    camera_group[i].checkpoint = None
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        ret1, frame1 = cap1.read()
+        if not ret1:
+            print("Error: Failed to read from the camera 1.")
             break
 
-    for i in range(camera_amount):
-        camera_group[i].cap.release()
+        ret2, frame2 = cap2.read()
+        if not ret2:
+            print("Error: Failed to read from the camera 2.")
+            break
+
+        # Convert OpenCV frame to CUDA image
+        cuda_img1 = jetson.utils.cudaFromNumpy(frame1)
+        cuda_img2 = jetson.utils.cudaFromNumpy(frame2)
+
+        # Run the object detection model
+        detections1 = model.Detect(cuda_img1)
+        detections2 = model.Detect(cuda_img2)
+
+        # Count the number of people detected
+        people_count1 = get_people_count(detections1)
+        people_count2 = get_people_count(detections2)
+
+        # Get the status of the welding booth
+        status1 = get_workstation_status(people_count1)
+        status2 = get_workstation_status(people_count2)
+
+        # Check for change of status and publish information to the database   
+        status1, time_started1, previous_status1, presence_rate1, presence_total1 = check_status(people_count1, station1, status1, time_started1, previous_status1, sfvis, presence_total1, presence_rate1)
+        status2, time_started2, previous_status2, presence_rate2, presence_total2 = check_status(people_count2, station2, status2, time_started2, previous_status2, sfvis, presence_total2, presence_rate2)
+            
+        check_time = int(time.time() - overall_time)
+        
+        if not pause:
+            if (check_time % 20) == 0:
+                checkpoint = time.time()
+                if (check_time % 60) == 0:
+                    if first_time:
+                        presence_rate1 = presence_total1
+                        first_time = False
+                        old_presence_ttl1 = presence_total1
+                    else:    
+                        presence_rate1 = presence_total1 - old_presence_ttl1
+                        old_presence_ttl1 = presence_total1
+
+                    if first_time2:
+                        presence_rate2 = presence_total2
+                        first_time2 = False
+                        old_presence_ttl2 = presence_total2
+                    else:    
+                        presence_rate2 = presence_total2 - old_presence_ttl2
+                        old_presence_ttl2 = presence_total2
+
+                publish_to_mysql(people_count1, station1, None, status1, previous_status1, sfvis, presence_rate1, presence_total1)
+                publish_to_mysql(people_count2, station2, None, status2, previous_status2, sfvis, presence_rate2, presence_total2)
+                pause = True
+
+        if checkpoint is not None: 
+            testing = time.time() - checkpoint
+            if str(f"{testing:.1f}") == "1.0":
+                pause = False
+                checkpoint = None
+
+    cap1.release()
+    cap2.release()
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":

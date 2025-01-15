@@ -17,17 +17,11 @@ def install_packages():
     # Update package lists
     run_command("sudo apt update")
 
-    # Update package lists
-    run_command("sudo apt-get install v4l-utils")
+    # Install required system packages
+    run_command("sudo apt-get install -y v4l-utils python3-pip")
 
-    # Install pip3
-    run_command("sudo apt install python3-pip -y")
-
-    # Install MySQL Connector for Python
-    run_command("pip3 install mysql-connector-python")
-
-    # Install Flask
-    run_command("pip3 install Flask")
+    # Install Python libraries
+    run_command("pip3 install mysql-connector-python Flask opencv-python numpy")
 
     # Get the current directory where the script is located
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -54,12 +48,61 @@ def install_packages():
         run_command("sudo make install")
         run_command("sudo ldconfig")
 
-    run_command("pip3 install opencv-python")
-
-    # Install additional Python libraries
-    run_command("pip3 install numpy")
-
     print("All necessary packages installed.")
+
+def find_file(filename, search_path):
+    """Search for a file recursively within a directory."""
+    for root, dirs, files in os.walk(search_path):
+        if filename in files:
+            return os.path.join(root, filename)
+    return None
+
+def setup_systemd_service(service_name, script_path):
+    """Set up the systemd service for the CV script."""
+    service_file = f"/etc/systemd/system/{service_name}.service"
+    service_content = f"""
+[Unit]
+Description=Computer Vision Script Service
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 {script_path}
+Restart=always
+User={os.getenv("USER")}
+WorkingDirectory={os.path.dirname(script_path)}
+
+[Install]
+WantedBy=multi-user.target
+    """
+
+    # Write the service file
+    with open(f"{service_name}.service", "w") as f:
+        f.write(service_content)
+
+    # Move the service file to the system directory
+    run_command(f"sudo mv {service_name}.service {service_file}")
+    run_command("sudo systemctl daemon-reload")
+    run_command(f"sudo systemctl enable {service_name}.service")
+    run_command(f"sudo systemctl start {service_name}.service")
+
+    print(f"Service {service_name} has been set up and started.")
 
 if __name__ == "__main__":
     install_packages()
+
+    target_file = "sfvis.py"  # Replace with your CV script filename
+    search_directory = os.getcwd()  # Start searching in the current directory
+
+    # Find the file
+    script_path = find_file(target_file, search_directory)
+
+    if not script_path:
+        print(f"Error: {target_file} not found in {search_directory}. Please check the filename and directory.")
+        sys.exit(1)
+
+    print(f"Found script at: {script_path}")
+
+    # Service name
+    service_name = "sfvis"
+
+    setup_systemd_service(service_name, script_path)
