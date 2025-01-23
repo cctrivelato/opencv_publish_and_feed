@@ -61,26 +61,24 @@ def setup_systemd_service(service_name, script_path):
     """Set up the systemd service for the CV script."""
     service_file = f"/etc/systemd/system/{service_name}.service"
     service_content = f"""
-[Unit]
-Description=Computer Vision Script Service
-After=network.target
+        [Unit]
+        Description=Computer Vision Script Service
+        After=network.target
 
-[Service]
-ExecStart=/usr/bin/python3 {script_path}
-Restart=always
-User={os.getenv("USER")}
-WorkingDirectory={os.path.dirname(script_path)}
+        [Service]
+        ExecStart=/usr/bin/python3 {script_path}
+        Restart=always
+        User={os.getenv("USER")}
+        WorkingDirectory={os.path.dirname(script_path)}
 
-[Install]
-WantedBy=multi-user.target
-    """
+        [Install]
+        WantedBy=multi-user.target
+            """
 
     # Write the service file
     with open(f"{service_name}.service", "w") as f:
         f.write(service_content)
 
-    # Move the service file to the system directory
-    run_command(f"sudo mv {service_name}.service {service_file}")
     run_command("sudo systemctl daemon-reload")
     run_command(f"sudo systemctl enable {service_name}.service")
     run_command(f"sudo systemctl start {service_name}.service")
