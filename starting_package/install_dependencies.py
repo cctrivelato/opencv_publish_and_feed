@@ -27,19 +27,15 @@ def install_packages():
     current_dir = os.path.dirname(os.path.abspath(__file__))
 
     # Define the new directory for jetson_inference
-    jetson_inference_dir = os.path.join(current_dir, "jetson_inference")
+    jetson_inference_dir = os.path.join(current_dir, "jetson-inference")
 
     # Create the new directory if it does not exist
     if not os.path.exists(jetson_inference_dir):
-        print(f"Creating directory {jetson_inference_dir}")
-        os.makedirs(jetson_inference_dir)
-
         # Clone the Jetson Inference repository into the new directory
-        os.chdir(jetson_inference_dir)
         run_command("git clone --recursive https://github.com/dusty-nv/jetson-inference")
 
         # Install Jetson Inference (assumes you have the necessary environment)
-        os.chdir(os.path.join(jetson_inference_dir, "jetson-inference"))
+        os.chdir(jetson_inference_dir)
         run_command("git submodule update --init")
         run_command("mkdir build")
         os.chdir("build")
@@ -88,8 +84,20 @@ WantedBy=multi-user.target
 
     print(f"Service {service_name} has been set up and started.")
 
+def go_to_starting_folder():
+    run_command("cd ~")
+    run_command("cd opendcv_publish_and_feed/starting_package")
+
 if __name__ == "__main__":
     install_packages()
+    go_to_starting_folder()
+
+    run_command("mv sfvis.py /home/administrator/")
+    run_command("mv dbconfig.ini /home/administrator/")
+    run_command("mv install_dependencies.py /home/administrator/")
+    run_command("mv jetson-inference /home/administrator/")
+
+    run_command("cd ~")
 
     target_file = "sfvis.py"  
     search_directory = os.getcwd()  # Start searching in the current directory
