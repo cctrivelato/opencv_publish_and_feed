@@ -60,25 +60,28 @@ def find_file(filename, search_path):
 def setup_systemd_service(service_name, script_path):
     """Set up the systemd service for the CV script."""
     service_file = f"/etc/systemd/system/{service_name}.service"
-    service_content = f"""
-        [Unit]
-        Description=Computer Vision Script Service
-        After=network.target
+    temp_service_file = f"{service_name}.service"
 
-        [Service]
-        ExecStart=/usr/bin/python3 {script_path}
-        Restart=always
-        User={os.getenv("USER")}
-        WorkingDirectory={os.path.dirname(script_path)}
+    service_content = f"""[Unit]
+Description=Computer Vision Script Service
+After=network.target
 
-        [Install]
-        WantedBy=multi-user.target
-            """
+[Service]
+ExecStart=/usr/bin/python3 {script_path}
+Restart=always
+User={os.getenv("USER")}
+WorkingDirectory={os.path.dirname(script_path)}
 
-    # Write the service file
-    with open(f"{service_name}.service", "w") as f:
+[Install]
+WantedBy=multi-user.target
+"""
+
+    # Write the service file in the current directory
+    with open(temp_service_file, "w") as f:
         f.write(service_content)
 
+    # Move it to the system directory with sudo
+    run_command(f"sudo mv {temp_service_file} {service_file}")
     run_command("sudo systemctl daemon-reload")
     run_command(f"sudo systemctl enable {service_name}.service")
     run_command(f"sudo systemctl start {service_name}.service")
