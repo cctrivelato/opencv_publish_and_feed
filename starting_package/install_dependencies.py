@@ -86,7 +86,7 @@ WantedBy=multi-user.target
 
 def go_to_starting_folder():
     run_command("cd ~")
-    run_command("cd opendcv_publish_and_feed/starting_package")
+    run_command("cd opencv_publish_and_feed/starting_package")
 
 if __name__ == "__main__":
     install_packages()
