@@ -97,17 +97,6 @@ if __name__ == "__main__":
     install_packages()
     go_to_starting_folder()
 
-    files_to_move = ["sfvis.py", "dbconfig.ini", "install_dependencies.py", "jetson-inference"]
-    target_directory = "/home/administrator"
-
-    for file in files_to_move:
-        if os.path.exists(file):
-            run_command(f"mv {file} {target_directory}/")
-        else:
-            print(f"Warning: {file} not found, skipping move.")
-
-    os.chdir(os.path.expanduser("~"))
-
     target_file = "sfvis.py"  
     search_directory = os.getcwd()  # Start searching in the current directory
 
